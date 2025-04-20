@@ -84,7 +84,7 @@ Make sure you have the following installed:
 ### Step 1: Clone the Repository
 1. Open your terminal (Command Prompt, PowerShell, or any terminal of your choice).
 2. Run the following commands on your terminal:
-   [git clone https://github.com/Abhilakshya627/Phishing-Website-Detection.git]
+[(https://github.com/Aarjav-Jain-2210/Phishing-website-detection)]
 ### Step 2: Step Up the Backend
 - **Install Dependencies**: Use the following command on your terminal : pip install -r requirements.txt
 -**Start API**: Run the following command to start the backend server: python app.py
