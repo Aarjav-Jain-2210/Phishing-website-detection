@@ -1,127 +1,106 @@
-from flask import Flask, request, jsonify, render_template
+import numpy as np
+from flask import Flask, request, jsonify
+import joblib
 from flask_cors import CORS
-import logging
 import re
+import pandas as pd
 from urllib.parse import urlparse
-import tldextract
-from collections import Counter
-from math import log2
-
-logging.basicConfig(level=logging.INFO)
+import logging
 
 app = Flask(__name__)
-CORS(app, resources={r"/predict": {"origins": "*"}})
+CORS(app)
 
-def calculate_entropy(text):
-    """Calculate Shannon entropy of a string."""
-    if not text:
-        return 0
-    length = len(text)
-    counter = Counter(text)
-    entropy = -sum((count / length) * log2(count / length) for count in counter.values())
-    return entropy
-
-def is_suspicious_url(url):
-    """Check if a URL is suspicious based on heuristic rules."""
-    try:
-        parsed_url = urlparse(url)
-        domain = parsed_url.netloc.lower()
-        path = parsed_url.path.lower()
-        scheme = parsed_url.scheme.lower()
-        query = parsed_url.query.lower()
-
-        ext = tldextract.extract(url)
-        domain_name = ext.domain.lower()
-        full_domain = f"{ext.domain}.{ext.suffix}".lower()
-
-        reasons = []
-
-        # Rule 1: Suspicious keywords in domain or path
-        suspicious_keywords = ['login', 'secure', 'account', 'verify', 'update', 'bank', 'password', 'signin', 'mp3', 'download', 'free', 'raid', 'torrent', 'stream']
-        if any(keyword in domain or keyword in path for keyword in suspicious_keywords):
-            reasons.append("suspicious or piracy-related keywords (e.g., mp3, download, raid)")
-
-        # Rule 2: Random or gibberish domain
-        consonants = 'bcdfghjklmnpqrstvwxyz'
-        consonant_count = sum(1 for char in domain_name if char in consonants)
-        is_gibberish = len(domain_name) > 8 and consonant_count / len(domain_name) > 0.6
-        if is_gibberish:
-            reasons.append("random or gibberish domain")
-
-        # Rule 3: Suspicious TLDs
-        suspicious_tlds = ['.xyz', '.info', '.online', '.club', '.site', '.top', '.work', '.pw', '.biz', '.cc', '.tk']
-        if any(full_domain.endswith(tld) for tld in suspicious_tlds):
-            reasons.append("suspicious TLD")
-
-        # Rule 4: Long URL or complex path
-        is_long_url = len(url) > 100
-        path_depth = len(path.split('/')) - 1 if path else 0
-        is_complex_path = path_depth > 2
-        if is_long_url:
-            reasons.append("unusually long URL")
-        if is_complex_path:
-            reasons.append("deep path structure")
-
-        # Rule 5: IP address instead of domain
-        is_ip_address = bool(re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', domain))
-        if is_ip_address:
-            reasons.append("uses IP address instead of domain")
-
-        # Rule 6: Non-HTTPS
-        if scheme != 'https':
-            reasons.append("lacks HTTPS")
-
-        # Rule 7: Excessive subdomains
-        subdomain_count = len(ext.subdomain.split('.')) if ext.subdomain else 0
-        if subdomain_count > 2:
-            reasons.append("excessive subdomains")
-
-        # Rule 8: Special characters in domain
-        special_chars = r'[-_@%+]'
-        if bool(re.search(special_chars, domain_name)):
-            reasons.append("special characters in domain")
-
-        # Rule 9: High entropy in domain
-        domain_entropy = calculate_entropy(domain_name)
-        if domain_entropy > 3.5:
-            reasons.append("high entropy (randomness) in domain")
-
-        # Rule 10: Query parameter count
-        query_param_count = len(query.split('&')) if query else 0
-        if query_param_count > 3:
-            reasons.append("excessive query parameters")
-
-        # Combine rules
-        is_phishing = bool(reasons)
-        if is_phishing:
-            message = f"Suspicious patterns detected: {', '.join(reasons)}."
-        else:
-            message = "This URL appears to be safe."
-
-        return is_phishing, message
-    except Exception as e:
-        logging.error("Error parsing URL: %s", str(e))
-        return False, "Error analyzing URL."
-
-@app.route('/')
-def index():
-    return render_template('index.html')
+logging.basicConfig(level=logging.INFO)
+# Load your trained model
+model = joblib.load('Model/model.pkl')
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    logging.info("Received request: %s", request.get_json())
-    url = request.get_json().get('url', '')
-    if not url:
-        return jsonify({"phishing": False, "message": "No URL provided."})
-
-    is_phishing, message = is_suspicious_url(url)
-    logging.info("Prediction for %s: %s", url, is_phishing)
-    return jsonify({"phishing": is_phishing, "message": message})
+    logging.info('Received request: %s', request.json)
+    data = request.get_json()
+    if 'url' not in data:
+        return jsonify({'error': 'URL is required'}), 400
+    url = data['url']
+    # Extract features from the URL
+    features = extract_features(url)
+    prediction = model.predict([features])
+    print(f"Prediction: {bool(prediction[0])}")
+    return jsonify({'phishing': bool(prediction[0])})
+def extract_features(url):
+    features = {}
+    parsed_url = urlparse(url)
+    
+    # Helper function to count occurrences of a character in the URL
+    def count_occurrences(char):
+        return url.count(char)
+    
+    # Length of URL
+    features['length_url'] = len(url)
+    
+    # Length of hostname
+    features['length_hostname'] = len(parsed_url.netloc)
+    
+    # Number of dots in URL
+    features['nb_dots'] = count_occurrences('.')
+    
+    # Number of hyphens in URL
+    features['nb_hyphens'] = count_occurrences('-')
+    
+    # Number of '@' in URL
+    features['nb_at'] = count_occurrences('@')
+    
+    # Number of '?' in URL
+    features['nb_qm'] = count_occurrences('?')
+    
+    # Number of '&' in URL
+    features['nb_and'] = count_occurrences('&')
+    
+    # Number of '=' in URL
+    features['nb_eq'] = count_occurrences('=')
+    
+    # Number of underscores in URL
+    features['nb_underscore'] = count_occurrences('_')
+    
+    # Number of tildes in URL
+    features['nb_tilde'] = count_occurrences('~')
+    
+    # Number of percent signs in URL
+    features['nb_percent'] = count_occurrences('%')
+    
+    # Number of slashes in URL
+    features['nb_slash'] = count_occurrences('/')
+    
+    # Number of colons in URL
+    features['nb_colon'] = count_occurrences(':')
+    
+    # Number of commas in URL
+    features['nb_comma'] = count_occurrences(',')
+    
+    # Number of semicolons in URL
+    features['nb_semicolumn'] = count_occurrences(';')
+    
+    # Number of dollar signs in URL
+    features['nb_dollar'] = count_occurrences('$')
+    
+    # Number of spaces in URL
+    features['nb_space'] = count_occurrences(' ')
+    
+    # Number of 'www' in URL
+    features['nb_www'] = url.count('www')
+    
+    # Number of '.com' in URL
+    features['nb_com'] = url.count('.com')
+    
+    # Number of double slashes in URL
+    features['nb_dslash'] = url.count('//')
+    
+    # Ratio of digits in URL
+    features['ratio_digits_url'] = sum(c.isdigit() for c in url) / len(url)
+    
+    # Ratio of digits in hostname
+    features['ratio_digits_host'] = sum(c.isdigit() for c in parsed_url.netloc) / len(parsed_url.netloc)
+    
+    return list(features.values())
 
 if __name__ == '__main__':
-    logging.info("Starting Flask server...")
-    try:
-        app.run(debug=True, host='0.0.0.0', port=8080)
-    except Exception as e:
-        logging.error("Failed to start server: %s", str(e))
-        raise
+    app.run(debug=True)
