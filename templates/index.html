@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing Detector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .legit {
+            color: #16a34a;
+        }
+
+        .suspicious {
+            color: #dc2626;
+        }
+
+        .error {
+            color: #d97706;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold text-center mb-4">Phishing Detector</h1>
+        <div class="mb-4">
+            <label for="urlInput" class="block text-sm font-medium text-gray-700">Enter URL</label>
+            <input type="text" id="urlInput" placeholder="https://example.com"
+                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <button onclick="checkURL()" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Check
+            URL</button>
+        <div id="result" class="mt-4">
+            <p><strong>URL:</strong> <span id="url">None</span></p>
+            <p><strong>Status:</strong> <span id="status">None</span></p>
+            <p><strong>Message:</strong> <span id="message">Enter a URL and click Check URL.</span></p>
+        </div>
+    </div>
+    <script>
+        async function checkURL() {
+            const urlInput = document.getElementById('urlInput').value.trim();
+            const urlDisplay = document.getElementById('url');
+            const statusDisplay = document.getElementById('status');
+            const messageDisplay = document.getElementById('message');
+
+            // Reset display
+            urlDisplay.textContent = urlInput || 'None';
+            statusDisplay.textContent = 'Checking...';
+            statusDisplay.className = '';
+            messageDisplay.textContent = 'Fetching results...';
+
+            if (!urlInput) {
+                statusDisplay.textContent = 'Error';
+                statusDisplay.className = 'error';
+                messageDisplay.textContent = 'Please enter a valid URL.';
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8080/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlInput })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok: ' + response.status);
+                }
+
+                const data = await response.json();
+                const status = data.phishing ? 'Suspicious' : 'Legit';
+                statusDisplay.textContent = status;
+                statusDisplay.className = status.toLowerCase();
+                messageDisplay.textContent = data.message;
+            } catch (error) {
+                console.error('Fetch error:', error);
+                statusDisplay.textContent = 'Error';
+                statusDisplay.className = 'error';
+                messageDisplay.textContent = 'Failed to check URL. Please try again.';
+            }
+        }
+    </script>
+</body>
+
+</html>
